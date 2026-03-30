@@ -39,7 +39,7 @@ public class ObjectMapperFactoryProvider implements Supplier<ObjectMapperFactory
 
   private ObjectMapperFactoryProvider() {}
 
-  public void setFactory(ObjectMapperFactory objectMapperFactory) {
+  public synchronized void setFactory(ObjectMapperFactory objectMapperFactory) {
     this.objectMapperFactory = Objects.requireNonNull(objectMapperFactory);
   }
 
