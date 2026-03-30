@@ -38,7 +38,7 @@ import io.serverlessworkflow.impl.WorkflowStatus;
 import io.serverlessworkflow.impl.events.EventPublisher;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import org.junit.jupiter.api.Test;
 
@@ -74,7 +74,6 @@ public class EventFilteringTest {
     try (WorkflowApplication app =
         WorkflowApplication.builder().withListener(new TraceExecutionListener()).build()) {
 
-      // 1. Build the workflow using your exact DSL
       Workflow workflow =
           FuncWorkflowBuilder.workflow("intelligent-newsletter")
               .tasks(
@@ -86,11 +85,9 @@ public class EventFilteringTest {
                                   consumed("org.acme.newsletter.review.done")
                                       .extensionByInstanceId("instanceid")))
                       .outputAs(
-                          (ArrayList events) -> {
+                          (List<CloudEventData> events) -> {
                             try {
-                              return MAPPER.readValue(
-                                  ((CloudEventData) events.iterator().next()).toBytes(),
-                                  HumanReview.class);
+                              return MAPPER.readValue(events.get(0).toBytes(), HumanReview.class);
                             } catch (Exception e) {
                               throw new RuntimeException("Failed to deserialize HumanReview", e);
                             }

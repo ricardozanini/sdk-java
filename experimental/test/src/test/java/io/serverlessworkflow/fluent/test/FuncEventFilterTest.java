@@ -20,21 +20,27 @@ import static io.serverlessworkflow.fluent.func.dsl.FuncDSL.listen;
 import static io.serverlessworkflow.fluent.func.dsl.FuncDSL.toOne;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import io.serverlessworkflow.api.types.Workflow;
 import io.serverlessworkflow.fluent.func.FuncWorkflowBuilder;
 import io.serverlessworkflow.impl.WorkflowApplication;
 import io.serverlessworkflow.impl.WorkflowModel;
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import org.junit.jupiter.api.Test;
 
 /**
  * Tests for the Event Filter DSL specification. Verifies that the fluent builder correctly wires
- * the payload parsing and contextual lambdas into the final Workflow definitions.
+ * the payload parsing and contextual lambdas into the final Workflow definitions, and ensures the
+ * ModelCollection adapters seamlessly convert between types.
  */
 class FuncEventFilterTest {
+
+  public record Review(String author, String text, int rating) {}
 
   @Test
   void testListenToOneCollection() {
@@ -47,12 +53,42 @@ class FuncEventFilterTest {
   }
 
   @Test
-  void testListenToOneNode() {
+  void testListenToOneArrayNode() {
     runIt(
         FuncWorkflowBuilder.workflow("listenToOneReviewNode")
             .tasks(
                 listen("waitReview", toOne("org.acme.test.review"))
                     .outputAs((ArrayNode node) -> node.get(0)))
+            .build());
+  }
+
+  @Test
+  void testListenToOneList() {
+    runIt(
+        FuncWorkflowBuilder.workflow("listenToOneReviewList")
+            .tasks(
+                listen("waitReview", toOne("org.acme.test.review"))
+                    .outputAs((List<JsonNode> list) -> list.get(0)))
+            .build());
+  }
+
+  @Test
+  void testListenToOneSet() {
+    runIt(
+        FuncWorkflowBuilder.workflow("listenToOneReviewSet")
+            .tasks(
+                listen("waitReview", toOne("org.acme.test.review"))
+                    .outputAs((Set<JsonNode> set) -> set.iterator().next()))
+            .build());
+  }
+
+  @Test
+  void testListenToOneArray() {
+    runIt(
+        FuncWorkflowBuilder.workflow("listenToOneReviewArray")
+            .tasks(
+                listen("waitReview", toOne("org.acme.test.review"))
+                    .outputAs((JsonNode[] array) -> array[0]))
             .build());
   }
 
@@ -64,10 +100,14 @@ class FuncEventFilterTest {
 
   private void runIt(Workflow listen) {
     Review review = new Review("Torrente", "espectacular", 5);
+
     try (WorkflowApplication app = WorkflowApplication.builder().build()) {
+
       CompletableFuture<WorkflowModel> waiting =
           app.workflowDefinition(listen).instance(Map.of()).start();
+
       app.workflowDefinition(reviewEmitter()).instance(review).start().join();
+
       assertThat(waiting.join().as(Review.class).orElseThrow()).isEqualTo(review);
     }
   }
