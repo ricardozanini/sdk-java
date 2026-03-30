@@ -35,7 +35,7 @@ public class ObjectMapperFactoryProvider implements Supplier<ObjectMapperFactory
     return instance;
   }
 
-  private ObjectMapperFactory objectMapperFactory;
+  private volatile ObjectMapperFactory objectMapperFactory;
 
   private ObjectMapperFactoryProvider() {}
 
@@ -45,8 +45,14 @@ public class ObjectMapperFactoryProvider implements Supplier<ObjectMapperFactory
 
   @Override
   public ObjectMapperFactory get() {
-    return objectMapperFactory != null
-        ? objectMapperFactory
-        : loadFirst(ObjectMapperFactory.class).orElseGet(() -> () -> DEFAULT_MAPPER);
+    if (objectMapperFactory == null) {
+      synchronized (this) {
+        if (objectMapperFactory == null) {
+          objectMapperFactory =
+              loadFirst(ObjectMapperFactory.class).orElseGet(() -> () -> DEFAULT_MAPPER);
+        }
+      }
+    }
+    return objectMapperFactory;
   }
 }

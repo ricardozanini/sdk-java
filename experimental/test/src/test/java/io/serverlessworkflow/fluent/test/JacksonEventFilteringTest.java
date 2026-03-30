@@ -23,6 +23,7 @@ import static io.serverlessworkflow.fluent.func.dsl.FuncDSL.listen;
 import static io.serverlessworkflow.fluent.func.dsl.FuncDSL.switchWhenOrElse;
 import static io.serverlessworkflow.fluent.func.dsl.FuncDSL.to;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
 
 import io.cloudevents.CloudEvent;
 import io.cloudevents.core.builder.CloudEventBuilder;
@@ -38,6 +39,7 @@ import io.serverlessworkflow.impl.WorkflowStatus;
 import io.serverlessworkflow.impl.events.EventPublisher;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.Collection;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -109,8 +111,9 @@ public class JacksonEventFilteringTest {
       WorkflowInstance instance = definition.instance(new NewsletterRequest("Tech Stocks"));
       CompletableFuture<WorkflowModel> future = instance.start();
 
-      Thread.sleep(250);
-      assertThat(instance.status()).isEqualTo(WorkflowStatus.WAITING);
+      await()
+          .atMost(Duration.ofSeconds(5))
+          .until(() -> instance.status() == WorkflowStatus.WAITING);
 
       CloudEvent humanReviewEvent =
           CloudEventBuilder.v1()

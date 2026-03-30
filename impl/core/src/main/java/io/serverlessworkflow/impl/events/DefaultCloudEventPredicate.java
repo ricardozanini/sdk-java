@@ -73,8 +73,10 @@ public class DefaultCloudEventPredicate implements CloudEventPredicate {
   private CloudEventAttrPredicate<CloudEvent> envelopeFilter(
       EventProperties properties, WorkflowApplication app) {
     Object envelopePredObj = null;
-    if (properties.getAdditionalProperties() != null)
+    if (properties.getAdditionalProperties() != null
+        && properties.getAdditionalProperties().containsKey(ENVELOPE_PREDICATE))
       envelopePredObj = properties.getAdditionalProperties().remove(ENVELOPE_PREDICATE);
+
     return envelopePredObj == null
         ? isTrue()
         : fromCloudEvent(

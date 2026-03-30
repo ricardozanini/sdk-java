@@ -66,7 +66,8 @@ public class JacksonModelCollection implements WorkflowModelCollection {
 
       Object primitiveArray = Array.newInstance(componentType, elements.size());
       int i = 0;
-      for (Object item : elements) Array.set(primitiveArray, i++, item);
+      for (Object item : elements)
+        Array.set(primitiveArray, i++, JsonUtils.convertValue(item, componentType));
 
       return Optional.of(clazz.cast(primitiveArray));
     }

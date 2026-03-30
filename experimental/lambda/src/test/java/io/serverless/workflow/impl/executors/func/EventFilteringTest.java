@@ -22,7 +22,7 @@ import static io.serverlessworkflow.fluent.func.dsl.FuncDSL.function;
 import static io.serverlessworkflow.fluent.func.dsl.FuncDSL.listen;
 import static io.serverlessworkflow.fluent.func.dsl.FuncDSL.switchWhenOrElse;
 import static io.serverlessworkflow.fluent.func.dsl.FuncDSL.to;
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.cloudevents.CloudEvent;
@@ -38,21 +38,12 @@ import io.serverlessworkflow.impl.WorkflowStatus;
 import io.serverlessworkflow.impl.events.EventPublisher;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import org.junit.jupiter.api.Test;
 
 public class EventFilteringTest {
-
-  // --- Mock Domain Models ---
-  public record NewsletterRequest(String topic) {}
-
-  public record NewsletterDraft(String title, String body) {}
-
-  public record HumanReview(String status, String notes) {
-    public static final String NEEDS_REVISION = "NEEDS_REVISION";
-    public static final String APPROVED = "APPROVED";
-  }
 
   private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -71,8 +62,7 @@ public class EventFilteringTest {
 
   @Test
   public void testIntelligentNewsletterApprovalPath() throws Exception {
-    try (WorkflowApplication app =
-        WorkflowApplication.builder().withListener(new TraceExecutionListener()).build()) {
+    try (WorkflowApplication app = WorkflowApplication.builder().build()) {
 
       Workflow workflow =
           FuncWorkflowBuilder.workflow("intelligent-newsletter")
@@ -111,8 +101,9 @@ public class EventFilteringTest {
       CompletableFuture<WorkflowModel> future = instance.start();
 
       // Wait for it to hit the listen state
-      Thread.sleep(250);
-      assertThat(instance.status()).isEqualTo(WorkflowStatus.WAITING);
+      await()
+          .atMost(Duration.ofSeconds(5))
+          .until(() -> instance.status() == WorkflowStatus.WAITING);
 
       EventPublisher publisher = app.eventPublishers().iterator().next();
 
@@ -131,12 +122,10 @@ public class EventFilteringTest {
 
       publisher.publish(maliciousEvent).toCompletableFuture().join();
 
-      // Give the engine a moment to process and discard the event
-      Thread.sleep(250);
-
-      // Assert that the workflow completely ignored it and is STILL waiting
-      assertThat(future.isDone()).isFalse();
-      assertThat(instance.status()).isEqualTo(WorkflowStatus.WAITING);
+      await()
+          .pollDelay(Duration.ofMillis(250))
+          .atMost(Duration.ofMillis(500))
+          .until(() -> instance.status() == WorkflowStatus.WAITING && !future.isDone());
 
       // --- THE POSITIVE TEST: Fire the CORRECT event ---
       CloudEvent humanReviewEvent =
@@ -153,11 +142,20 @@ public class EventFilteringTest {
 
       publisher.publish(humanReviewEvent).toCompletableFuture().join();
 
-      // Wait for the workflow to resume and finish
-      future.join();
-
       // Assert successful completion
-      assertThat(instance.status()).isEqualTo(WorkflowStatus.COMPLETED);
+      await()
+          .atMost(Duration.ofSeconds(5))
+          .until(() -> instance.status() == WorkflowStatus.COMPLETED);
     }
+  }
+
+  // --- Mock Domain Models ---
+  public record NewsletterRequest(String topic) {}
+
+  public record NewsletterDraft(String title, String body) {}
+
+  public record HumanReview(String status, String notes) {
+    public static final String NEEDS_REVISION = "NEEDS_REVISION";
+    public static final String APPROVED = "APPROVED";
   }
 }
