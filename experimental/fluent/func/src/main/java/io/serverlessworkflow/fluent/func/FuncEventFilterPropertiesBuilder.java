@@ -20,6 +20,9 @@ import io.cloudevents.CloudEventData;
 import io.serverlessworkflow.api.types.func.ContextPredicate;
 import io.serverlessworkflow.api.types.func.EventDataPredicate;
 import io.serverlessworkflow.api.types.func.FilterPredicate;
+import io.serverlessworkflow.api.types.func.TypedContextPredicate;
+import io.serverlessworkflow.api.types.func.TypedFilterPredicate;
+import io.serverlessworkflow.api.types.func.TypedPredicate;
 import io.serverlessworkflow.fluent.spec.AbstractEventPropertiesBuilder;
 import java.util.function.Predicate;
 
@@ -50,20 +53,20 @@ public class FuncEventFilterPropertiesBuilder
   }
 
   public FuncEventFilterPropertiesBuilder envelope(Predicate<CloudEvent> predicate) {
-    this.eventProperties.setData(
-        new EventDataPredicate().withPredicate(predicate, CloudEvent.class));
+    this.eventProperties.setAdditionalProperty(
+        "envelopePredicate", new TypedPredicate<>(predicate, CloudEvent.class));
     return this;
   }
 
   public FuncEventFilterPropertiesBuilder envelope(ContextPredicate<CloudEvent> predicate) {
-    this.eventProperties.setData(
-        new EventDataPredicate().withPredicate(predicate, CloudEvent.class));
+    this.eventProperties.setAdditionalProperty(
+        "envelopePredicate", new TypedContextPredicate<>(predicate, CloudEvent.class));
     return this;
   }
 
   public FuncEventFilterPropertiesBuilder envelope(FilterPredicate<CloudEvent> predicate) {
-    this.eventProperties.setData(
-        new EventDataPredicate().withPredicate(predicate, CloudEvent.class));
+    this.eventProperties.setAdditionalProperty(
+        "envelopePredicate", new TypedFilterPredicate<>(predicate, CloudEvent.class));
     return this;
   }
 }

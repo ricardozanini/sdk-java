@@ -15,12 +15,14 @@
  */
 package io.serverlessworkflow.impl.jackson;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.NullNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.cloudevents.CloudEvent;
 import io.cloudevents.CloudEventData;
+import io.cloudevents.core.provider.EventFormatProvider;
 import io.cloudevents.jackson.JsonCloudEventData;
+import io.cloudevents.jackson.JsonFormat;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.time.OffsetDateTime;
@@ -30,30 +32,17 @@ import java.util.Date;
 public class JacksonCloudEventUtils {
 
   public static JsonNode toJsonNode(CloudEvent event) {
-    ObjectNode result = JsonUtils.mapper().createObjectNode();
-    if (event.getData() != null) {
-      result.set("data", toJsonNode(event.getData()));
+    if (event == null) {
+      return NullNode.instance;
     }
-    if (event.getSubject() != null) {
-      result.put("subject", event.getSubject());
+    // Delegate entirely to the official CloudEvents SDK
+    byte[] serialized =
+        EventFormatProvider.getInstance().resolveFormat(JsonFormat.CONTENT_TYPE).serialize(event);
+    try {
+      return JsonUtils.mapper().readTree(serialized);
+    } catch (IOException e) {
+      throw new UncheckedIOException(e);
     }
-    if (event.getDataContentType() != null) {
-      result.put("datacontenttype", event.getDataContentType());
-    }
-    result.put("id", event.getId());
-    result.put("source", event.getSource().toString());
-    result.put("type", event.getType());
-    result.put("specversion", event.getSpecVersion().toString());
-    if (event.getDataSchema() != null) {
-      result.put("dataschema", event.getDataSchema().toString());
-    }
-    if (event.getTime() != null) {
-      result.put("time", event.getTime().toString());
-    }
-    event
-        .getExtensionNames()
-        .forEach(n -> result.set(n, JsonUtils.fromValue(event.getExtension(n))));
-    return result;
   }
 
   public static OffsetDateTime toOffset(Date date) {
@@ -71,6 +60,27 @@ public class JacksonCloudEventUtils {
     } catch (IOException io) {
       throw new UncheckedIOException(io);
     }
+  }
+
+  public static CloudEvent toCloudEvent(JsonNode node) {
+    if (node == null || node.isNull()) {
+      return null;
+    }
+    try {
+      byte[] ceBytes = JsonUtils.mapper().writeValueAsBytes(node);
+      return EventFormatProvider.getInstance()
+          .resolveFormat(JsonFormat.CONTENT_TYPE)
+          .deserialize(ceBytes);
+    } catch (JsonProcessingException e) {
+      throw new IllegalArgumentException("Failed to deserialize JsonNode to CloudEvent", e);
+    }
+  }
+
+  public static CloudEventData toCloudEventData(JsonNode node) {
+    if (node == null || node.isNull()) {
+      return null;
+    }
+    return JsonCloudEventData.wrap(node);
   }
 
   private JacksonCloudEventUtils() {}

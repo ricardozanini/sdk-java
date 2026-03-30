@@ -15,7 +15,7 @@
             <artifactId>serverlessworkflow-impl-core</artifactId>
             <version>${project.version}</version>
         </dependency>
-         <dependency>
+        <dependency>
             <groupId>io.serverlessworkflow</groupId>
             <artifactId>serverlessworkflow-impl-jq</artifactId>
             <version>${project.version}</version>

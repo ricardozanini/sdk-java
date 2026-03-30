@@ -18,12 +18,18 @@ package io.serverlessworkflow.impl.jackson;
 import static io.serverlessworkflow.impl.WorkflowUtils.loadFirst;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.cloudevents.jackson.JsonFormat;
 import java.util.Objects;
 import java.util.function.Supplier;
 
 public class ObjectMapperFactoryProvider implements Supplier<ObjectMapperFactory> {
 
   private static ObjectMapperFactoryProvider instance = new ObjectMapperFactoryProvider();
+
+  private static final ObjectMapper DEFAULT_MAPPER =
+      new ObjectMapper()
+          .findAndRegisterModules()
+          .registerModule(JsonFormat.getCloudEventJacksonModule());
 
   public static ObjectMapperFactoryProvider instance() {
     return instance;
@@ -41,7 +47,6 @@ public class ObjectMapperFactoryProvider implements Supplier<ObjectMapperFactory
   public ObjectMapperFactory get() {
     return objectMapperFactory != null
         ? objectMapperFactory
-        : loadFirst(ObjectMapperFactory.class)
-            .orElseGet(() -> () -> new ObjectMapper().findAndRegisterModules());
+        : loadFirst(ObjectMapperFactory.class).orElseGet(() -> () -> DEFAULT_MAPPER);
   }
 }

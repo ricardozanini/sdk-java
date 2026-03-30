@@ -31,6 +31,8 @@ import com.fasterxml.jackson.databind.node.NullNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.node.ShortNode;
 import com.fasterxml.jackson.databind.node.TextNode;
+import io.cloudevents.CloudEvent;
+import io.cloudevents.CloudEventData;
 import io.serverlessworkflow.impl.WorkflowModel;
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -54,14 +56,12 @@ import java.util.stream.Collector;
 
 public class JsonUtils {
 
-  private static ObjectMapper mapper = ObjectMapperFactoryProvider.instance().get().get();
-
   public static ObjectMapper mapper() {
-    return mapper;
+    return ObjectMapperFactoryProvider.instance().get().get();
   }
 
   public static Collector<JsonNode, ArrayNode, ArrayNode> arrayNodeCollector() {
-    return new Collector<JsonNode, ArrayNode, ArrayNode>() {
+    return new Collector<>() {
       @Override
       public BiConsumer<ArrayNode, JsonNode> accumulator() {
         return ArrayNode::add;
@@ -87,7 +87,7 @@ public class JsonUtils {
 
       @Override
       public Supplier<ArrayNode> supplier() {
-        return () -> mapper.createArrayNode();
+        return () -> mapper().createArrayNode();
       }
     };
   }
@@ -97,6 +97,7 @@ public class JsonUtils {
    * Although we can use directly ObjectMapper.convertValue for implementing fromValue and toJavaValue methods,
    * the performance gain of avoiding an intermediate buffer is so tempting that we cannot avoid it
    */
+  @SuppressWarnings("unchecked")
   public static JsonNode fromValue(Object value) {
     if (value == null) {
       return NullNode.instance;
@@ -128,8 +129,12 @@ public class JsonUtils {
       return mapToNode((Map<String, Object>) value);
     } else if (value instanceof WorkflowModel model) {
       return modelToJson(model);
+    } else if (value instanceof CloudEvent ce) {
+      return JacksonCloudEventUtils.toJsonNode(ce);
+    } else if (value instanceof CloudEventData data) {
+      return JacksonCloudEventUtils.toJsonNode(data);
     } else {
-      return mapper.convertValue(value, JsonNode.class);
+      return mapper().convertValue(value, JsonNode.class);
     }
   }
 
@@ -147,7 +152,7 @@ public class JsonUtils {
     String trimmedValue = value.trim();
     if (trimmedValue.startsWith("{") && trimmedValue.endsWith("}")) {
       try {
-        return mapper.readTree(trimmedValue);
+        return mapper().readTree(trimmedValue);
       } catch (IOException ex) {
         // ignore and return test node
       }
@@ -163,8 +168,8 @@ public class JsonUtils {
     return result;
   }
 
-  private static Collection toJavaValue(ArrayNode node) {
-    Collection result = new ArrayList<>();
+  private static Collection<Object> toJavaValue(ArrayNode node) {
+    Collection<Object> result = new ArrayList<>();
     for (JsonNode item : node) {
       result.add(internalToJavaValue(item, JsonUtils::toJavaValue, JsonUtils::toJavaValue));
     }
@@ -181,7 +186,7 @@ public class JsonUtils {
     } else if (obj instanceof JsonNode) {
       return convertValue((JsonNode) obj, returnType);
     } else {
-      return mapper.convertValue(obj, returnType);
+      return mapper().convertValue(obj, returnType);
     }
   }
 
@@ -197,8 +202,12 @@ public class JsonUtils {
       obj = jsonNode.asLong();
     } else if (String.class.isAssignableFrom(returnType)) {
       obj = jsonNode.asText();
+    } else if (CloudEvent.class.isAssignableFrom(returnType)) {
+      obj = JacksonCloudEventUtils.toCloudEvent(jsonNode);
+    } else if (CloudEventData.class.isAssignableFrom(returnType)) {
+      obj = JacksonCloudEventUtils.toCloudEventData(jsonNode);
     } else {
-      obj = mapper.convertValue(jsonNode, returnType);
+      obj = mapper().convertValue(jsonNode, returnType);
     }
     return returnType.cast(obj);
   }
@@ -228,12 +237,12 @@ public class JsonUtils {
     } else if (jsonNode.isObject()) {
       return objectFunction.apply((ObjectNode) jsonNode);
     } else {
-      return mapper.convertValue(jsonNode, Object.class);
+      return mapper().convertValue(jsonNode, Object.class);
     }
   }
 
   public static String toString(JsonNode node) throws JsonProcessingException {
-    return mapper.writeValueAsString(node);
+    return mapper().writeValueAsString(node);
   }
 
   public static void addToNode(String name, Object value, ObjectNode dest) {
@@ -241,7 +250,7 @@ public class JsonUtils {
   }
 
   private static ObjectNode mapToNode(Map<String, Object> value) {
-    ObjectNode objectNode = mapper.createObjectNode();
+    ObjectNode objectNode = mapper().createObjectNode();
     for (Map.Entry<String, Object> entry : value.entrySet()) {
       addToNode(entry.getKey(), entry.getValue(), objectNode);
     }
@@ -249,7 +258,7 @@ public class JsonUtils {
   }
 
   private static ArrayNode mapToArray(Collection<?> collection) {
-    return mapToArray(collection, mapper.createArrayNode());
+    return mapToArray(collection, mapper().createArrayNode());
   }
 
   private static ArrayNode mapToArray(Collection<?> collection, ArrayNode arrayNode) {
@@ -260,11 +269,11 @@ public class JsonUtils {
   }
 
   public static ObjectNode object() {
-    return mapper.createObjectNode();
+    return mapper().createObjectNode();
   }
 
   public static ArrayNode array() {
-    return mapper.createArrayNode();
+    return mapper().createArrayNode();
   }
 
   public static Optional<OffsetDateTime> toDate(JsonNode node) {

@@ -36,6 +36,12 @@ import java.util.Objects;
 
 public class DefaultCloudEventPredicate implements CloudEventPredicate {
 
+  /**
+   * {@link EventProperties#getAdditionalProperties()} property for custom {@link CloudEvent} {@link
+   * java.util.function.Predicate} evaluation.
+   */
+  public static final String ENVELOPE_PREDICATE = "envelopePredicate";
+
   private final CloudEventAttrPredicate<String> idFilter;
   private final CloudEventAttrPredicate<URI> sourceFilter;
   private final CloudEventAttrPredicate<String> subjectFilter;
@@ -44,9 +50,10 @@ public class DefaultCloudEventPredicate implements CloudEventPredicate {
   private final CloudEventAttrPredicate<URI> dataSchemaFilter;
   private final CloudEventAttrPredicate<OffsetDateTime> timeFilter;
   private final CloudEventAttrPredicate<CloudEventData> dataFilter;
+  private final CloudEventAttrPredicate<CloudEvent> envelopeFilter;
   private final CloudEventAttrPredicate<Map<String, Object>> additionalFilter;
 
-  private static final <T> CloudEventAttrPredicate<T> isTrue() {
+  private static <T> CloudEventAttrPredicate<T> isTrue() {
     return (x, w, t) -> true;
   }
 
@@ -59,7 +66,21 @@ public class DefaultCloudEventPredicate implements CloudEventPredicate {
     dataSchemaFilter = dataSchemaFilter(properties.getDataschema(), app);
     timeFilter = offsetTimeFilter(properties.getTime(), app);
     dataFilter = dataFilter(properties.getData(), app);
+    envelopeFilter = envelopeFilter(properties, app);
     additionalFilter = additionalFilter(properties.getAdditionalProperties(), app);
+  }
+
+  private CloudEventAttrPredicate<CloudEvent> envelopeFilter(
+      EventProperties properties, WorkflowApplication app) {
+    Object envelopePredObj = null;
+    if (properties.getAdditionalProperties() != null)
+      envelopePredObj = properties.getAdditionalProperties().remove(ENVELOPE_PREDICATE);
+    return envelopePredObj == null
+        ? isTrue()
+        : fromCloudEvent(
+            app.modelFactory(),
+            app.expressionFactory()
+                .buildPredicate(new ExpressionDescriptor(null, envelopePredObj)));
   }
 
   private CloudEventAttrPredicate<Map<String, Object>> additionalFilter(
@@ -72,9 +93,14 @@ public class DefaultCloudEventPredicate implements CloudEventPredicate {
         : isTrue();
   }
 
-  private CloudEventAttrPredicate<CloudEventData> fromCloudEvent(
+  private CloudEventAttrPredicate<CloudEventData> fromCloudEventData(
       WorkflowModelFactory workflowModelFactory, WorkflowPredicate filter) {
     return (d, w, t) -> filter.test(w, t, workflowModelFactory.from(d));
+  }
+
+  private CloudEventAttrPredicate<CloudEvent> fromCloudEvent(
+      WorkflowModelFactory workflowModelFactory, WorkflowPredicate filter) {
+    return (e, w, t) -> filter.test(w, t, workflowModelFactory.from(e));
   }
 
   private CloudEventAttrPredicate<Map<String, Object>> fromMap(
@@ -85,7 +111,7 @@ public class DefaultCloudEventPredicate implements CloudEventPredicate {
   private CloudEventAttrPredicate<CloudEventData> dataFilter(
       EventData data, WorkflowApplication app) {
     return data != null
-        ? fromCloudEvent(
+        ? fromCloudEventData(
             app.modelFactory(),
             app.expressionFactory()
                 .buildPredicate(
@@ -179,6 +205,7 @@ public class DefaultCloudEventPredicate implements CloudEventPredicate {
         && typeFilter.test(event.getType(), workflow, task)
         && dataSchemaFilter.test(event.getDataSchema(), workflow, task)
         && timeFilter.test(event.getTime(), workflow, task)
+        && envelopeFilter.test(event, workflow, task)
         && dataFilter.test(event.getData(), workflow, task)
         && additionalFilter.test(CloudEventUtils.extensions(event), workflow, task);
   }
