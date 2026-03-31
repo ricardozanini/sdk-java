@@ -17,17 +17,15 @@ package io.serverlessworkflow.impl.model.jackson;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import io.serverlessworkflow.impl.CollectionConversionUtils;
 import io.serverlessworkflow.impl.WorkflowModel;
 import io.serverlessworkflow.impl.WorkflowModelCollection;
 import io.serverlessworkflow.impl.jackson.JsonUtils;
-import java.lang.reflect.Array;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 
 public class JacksonModelCollection implements WorkflowModelCollection {
 
@@ -46,33 +44,12 @@ public class JacksonModelCollection implements WorkflowModelCollection {
     if (node == null) return Optional.empty();
 
     if (clazz.isInstance(node)) return Optional.of(clazz.cast(node));
-
     if (clazz.isInstance(this)) return Optional.of(clazz.cast(this));
 
     List<JsonNode> elements = new ArrayList<>(node.size());
     node.forEach(elements::add);
 
-    if (clazz.isAssignableFrom(List.class)) return Optional.of(clazz.cast(elements));
-    else if (clazz.isAssignableFrom(Set.class))
-      return Optional.of(clazz.cast(new HashSet<>(elements)));
-
-    if (clazz.isArray()) {
-      Class<?> componentType = clazz.getComponentType();
-
-      if (!componentType.isPrimitive()) {
-        Object[] typedArray = (Object[]) Array.newInstance(componentType, 0);
-        return Optional.of(clazz.cast(elements.toArray(typedArray)));
-      }
-
-      Object primitiveArray = Array.newInstance(componentType, elements.size());
-      int i = 0;
-      for (Object item : elements)
-        Array.set(primitiveArray, i++, JsonUtils.convertValue(item, componentType));
-
-      return Optional.of(clazz.cast(primitiveArray));
-    }
-
-    return Optional.empty();
+    return CollectionConversionUtils.as(elements, clazz, JsonUtils::convertValue);
   }
 
   @Override
@@ -115,14 +92,20 @@ public class JacksonModelCollection implements WorkflowModelCollection {
     }
   }
 
+  private List<WorkflowModel> toModelList() {
+    List<WorkflowModel> models = new ArrayList<>(node.size());
+    node.forEach(n -> models.add(new JacksonModel(n)));
+    return models;
+  }
+
   @Override
   public Object[] toArray() {
-    throw new UnsupportedOperationException("toArray() is not supported yet");
+    return toModelList().toArray();
   }
 
   @Override
   public <T> T[] toArray(T[] a) {
-    throw new UnsupportedOperationException("toArray() is not supported yet");
+    return toModelList().toArray(a);
   }
 
   @Override

@@ -26,11 +26,6 @@ public class ObjectMapperFactoryProvider implements Supplier<ObjectMapperFactory
 
   private static ObjectMapperFactoryProvider instance = new ObjectMapperFactoryProvider();
 
-  private static final ObjectMapper DEFAULT_MAPPER =
-      new ObjectMapper()
-          .findAndRegisterModules()
-          .registerModule(JsonFormat.getCloudEventJacksonModule());
-
   public static ObjectMapperFactoryProvider instance() {
     return instance;
   }
@@ -49,10 +44,28 @@ public class ObjectMapperFactoryProvider implements Supplier<ObjectMapperFactory
       synchronized (this) {
         if (objectMapperFactory == null) {
           objectMapperFactory =
-              loadFirst(ObjectMapperFactory.class).orElseGet(() -> () -> DEFAULT_MAPPER);
+              loadFirst(ObjectMapperFactory.class).orElseGet(DefaultObjectMapperFactory::new);
         }
       }
     }
     return objectMapperFactory;
+  }
+
+  /** Internal default private factory lazy initialized. */
+  private static class DefaultObjectMapperFactory implements ObjectMapperFactory {
+
+    private final ObjectMapper mapper;
+
+    DefaultObjectMapperFactory() {
+      this.mapper =
+          new ObjectMapper()
+              .findAndRegisterModules()
+              .registerModule(JsonFormat.getCloudEventJacksonModule());
+    }
+
+    @Override
+    public ObjectMapper get() {
+      return mapper;
+    }
   }
 }

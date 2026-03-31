@@ -15,16 +15,14 @@
  */
 package io.serverlessworkflow.impl.model.func;
 
+import io.serverlessworkflow.impl.CollectionConversionUtils;
 import io.serverlessworkflow.impl.WorkflowModel;
 import io.serverlessworkflow.impl.WorkflowModelCollection;
-import java.lang.reflect.Array;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 
 public class JavaModelCollection implements Collection<WorkflowModel>, WorkflowModelCollection {
 
@@ -82,14 +80,22 @@ public class JavaModelCollection implements Collection<WorkflowModel>, WorkflowM
     return new ModelIterator(object.iterator());
   }
 
+  private List<WorkflowModel> toModelList() {
+    List<WorkflowModel> models = new ArrayList<>(object.size());
+    for (Object obj : object)
+      models.add(obj instanceof WorkflowModel value ? value : nextItem(obj));
+
+    return models;
+  }
+
   @Override
   public Object[] toArray() {
-    throw new UnsupportedOperationException("toArray is not supported yet");
+    return toModelList().toArray();
   }
 
   @Override
   public <T> T[] toArray(T[] a) {
-    throw new UnsupportedOperationException("toArray is not supported yet");
+    return toModelList().toArray(a);
   }
 
   @Override
@@ -142,29 +148,11 @@ public class JavaModelCollection implements Collection<WorkflowModel>, WorkflowM
   }
 
   @Override
-  @SuppressWarnings({"rawtypes", "unchecked"})
   public <T> Optional<T> as(Class<T> clazz) {
     if (object == null) return Optional.empty();
 
     if (clazz.isInstance(object)) return Optional.of(clazz.cast(object));
 
-    if (clazz.isAssignableFrom(List.class)) return Optional.of(clazz.cast(new ArrayList<>(object)));
-    else if (clazz.isAssignableFrom(Set.class))
-      return Optional.of(clazz.cast(new HashSet<>(object)));
-
-    if (clazz.isArray()) {
-      Class<?> componentType = clazz.getComponentType();
-      if (!componentType.isPrimitive()) {
-        Object[] typedArray = (Object[]) Array.newInstance(componentType, 0);
-        return Optional.of(clazz.cast(object.toArray(typedArray)));
-      }
-
-      Object primitiveArray = Array.newInstance(componentType, object.size());
-      int i = 0;
-      for (Object item : object) Array.set(primitiveArray, i++, item);
-      return Optional.of(clazz.cast(primitiveArray));
-    }
-
-    return Optional.empty();
+    return CollectionConversionUtils.as(object, clazz);
   }
 }
