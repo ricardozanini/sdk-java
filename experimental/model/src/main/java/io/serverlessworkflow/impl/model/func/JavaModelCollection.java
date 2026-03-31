@@ -151,6 +151,7 @@ public class JavaModelCollection implements Collection<WorkflowModel>, WorkflowM
   public <T> Optional<T> as(Class<T> clazz) {
     if (object == null) return Optional.empty();
 
+    if (clazz.isInstance(this)) return Optional.of(clazz.cast(this));
     if (clazz.isInstance(object)) return Optional.of(clazz.cast(object));
 
     return CollectionConversionUtils.as(object, clazz);
