@@ -18,6 +18,7 @@ package io.serverlessworkflow.impl.jackson;
 import static io.serverlessworkflow.impl.WorkflowUtils.loadFirst;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.cloudevents.jackson.JsonFormat;
 import java.util.Objects;
 import java.util.function.Supplier;
 
@@ -29,19 +30,42 @@ public class ObjectMapperFactoryProvider implements Supplier<ObjectMapperFactory
     return instance;
   }
 
-  private ObjectMapperFactory objectMapperFactory;
+  private volatile ObjectMapperFactory objectMapperFactory;
 
   private ObjectMapperFactoryProvider() {}
 
-  public void setFactory(ObjectMapperFactory objectMapperFactory) {
+  public synchronized void setFactory(ObjectMapperFactory objectMapperFactory) {
     this.objectMapperFactory = Objects.requireNonNull(objectMapperFactory);
   }
 
   @Override
   public ObjectMapperFactory get() {
-    return objectMapperFactory != null
-        ? objectMapperFactory
-        : loadFirst(ObjectMapperFactory.class)
-            .orElseGet(() -> () -> new ObjectMapper().findAndRegisterModules());
+    if (objectMapperFactory == null) {
+      synchronized (this) {
+        if (objectMapperFactory == null) {
+          objectMapperFactory =
+              loadFirst(ObjectMapperFactory.class).orElseGet(DefaultObjectMapperFactory::new);
+        }
+      }
+    }
+    return objectMapperFactory;
+  }
+
+  /** Internal default private factory lazy initialized. */
+  private static class DefaultObjectMapperFactory implements ObjectMapperFactory {
+
+    private final ObjectMapper mapper;
+
+    DefaultObjectMapperFactory() {
+      this.mapper =
+          new ObjectMapper()
+              .findAndRegisterModules()
+              .registerModule(JsonFormat.getCloudEventJacksonModule());
+    }
+
+    @Override
+    public ObjectMapper get() {
+      return mapper;
+    }
   }
 }
