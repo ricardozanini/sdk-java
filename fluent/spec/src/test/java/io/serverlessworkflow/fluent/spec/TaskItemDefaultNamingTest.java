@@ -25,6 +25,7 @@ import io.serverlessworkflow.api.types.TaskItem;
 import io.serverlessworkflow.api.types.TryTask;
 import io.serverlessworkflow.api.types.TryTaskCatch;
 import io.serverlessworkflow.api.types.Workflow;
+import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -126,6 +127,23 @@ public class TaskItemDefaultNamingTest {
 
     assertEquals("http-0", nestedForItems.get(0).getName());
     assertEquals("set-1", nestedForItems.get(1).getName());
+  }
+
+  @Test
+  void testWaitTaskAutoNamingAndDuration() {
+    Workflow wf =
+        WorkflowBuilder.workflow("flowAutoNameWait")
+            .tasks(d -> d.wait(null, w -> w.wait(Duration.ofSeconds(2).plusMillis(250))))
+            .build();
+
+    List<TaskItem> items = wf.getDo();
+    assertNotNull(items, "Do list must not be null");
+    assertEquals(1, items.size(), "There should be one wait task");
+    assertEquals("wait-0", items.get(0).getName(), "Wait task should be wait-0");
+    assertEquals(
+        2, items.get(0).getTask().getWaitTask().getWait().getDurationInline().getSeconds());
+    assertEquals(
+        250, items.get(0).getTask().getWaitTask().getWait().getDurationInline().getMilliseconds());
   }
 
   @Test
@@ -431,5 +449,46 @@ public class TaskItemDefaultNamingTest {
     assertEquals("set-0", nestedTasks.get(0).getName(), "First tasks() call starts at 0");
     assertEquals("set-1", nestedTasks.get(1).getName(), "Second tasks() call picks up index 1");
     assertEquals("http-2", nestedTasks.get(2).getName(), "Third tasks() call picks up index 2");
+  }
+
+  @Test
+  void testNamedForkBranchesWrapDoTaskAndPreserveBranchName() {
+    Workflow wf =
+        WorkflowBuilder.workflow("flowNamedForkBranch")
+            .tasks(
+                d ->
+                    d.fork(
+                        null,
+                        f ->
+                            f.branch(
+                                    "helloBranch",
+                                    b ->
+                                        b.wait(null, w -> w.wait(Duration.ofMillis(10)))
+                                            .set(null, s -> s.expr("$.value = 1")))
+                                .branch(
+                                    "byeBranch",
+                                    b ->
+                                        b.wait(null, w -> w.wait(Duration.ofMillis(10)))
+                                            .set(null, s -> s.expr("$.value = 2")))))
+            .build();
+
+    List<TaskItem> topItems = wf.getDo();
+    assertEquals(1, topItems.size(), "Should have one top-level fork task");
+
+    ForkTaskConfiguration forkConfig = topItems.get(0).getTask().getForkTask().getFork();
+    assertNotNull(forkConfig, "Fork configuration must not be null");
+
+    List<TaskItem> branches = forkConfig.getBranches();
+    assertEquals(2, branches.size(), "Should have two named branches");
+    assertEquals("helloBranch", branches.get(0).getName());
+    assertEquals("byeBranch", branches.get(1).getName());
+
+    List<TaskItem> helloDo = branches.get(0).getTask().getDoTask().getDo();
+    List<TaskItem> byeDo = branches.get(1).getTask().getDoTask().getDo();
+
+    assertEquals("wait-0", helloDo.get(0).getName());
+    assertEquals("set-1", helloDo.get(1).getName());
+    assertEquals("wait-0", byeDo.get(0).getName());
+    assertEquals("set-1", byeDo.get(1).getName());
   }
 }

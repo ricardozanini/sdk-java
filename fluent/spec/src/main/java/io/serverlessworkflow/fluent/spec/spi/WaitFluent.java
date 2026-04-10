@@ -15,23 +15,14 @@
  */
 package io.serverlessworkflow.fluent.spec.spi;
 
-import io.serverlessworkflow.api.types.ForkTask;
-import io.serverlessworkflow.fluent.spec.BaseTaskItemListBuilder;
 import io.serverlessworkflow.fluent.spec.TaskBaseBuilder;
 import java.util.function.Consumer;
 
-public interface ForkTaskFluent<
-    SELF extends TaskBaseBuilder<SELF>, L extends BaseTaskItemListBuilder<L>> {
+public interface WaitFluent<SELF extends TaskBaseBuilder<?>, LIST> {
 
-  SELF compete(final boolean compete);
+  LIST wait(String name, Consumer<SELF> itemsConfigurer);
 
-  SELF branches(Consumer<L> branchesConsumer);
-
-  default SELF branch(Consumer<L> branchConsumer) {
-    return branch(null, branchConsumer);
+  default LIST wait(Consumer<SELF> itemsConfigurer) {
+    return this.wait(null, itemsConfigurer);
   }
-
-  SELF branch(String name, Consumer<L> branchConsumer);
-
-  ForkTask build();
 }

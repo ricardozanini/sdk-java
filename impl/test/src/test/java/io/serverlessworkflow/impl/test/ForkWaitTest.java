@@ -20,7 +20,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
 import io.serverlessworkflow.api.types.Workflow;
+import io.serverlessworkflow.fluent.spec.WorkflowBuilder;
+import io.serverlessworkflow.fluent.spec.dsl.DSL;
 import io.serverlessworkflow.impl.WorkflowApplication;
+import io.serverlessworkflow.impl.WorkflowDefinitionId;
 import io.serverlessworkflow.impl.WorkflowInstance;
 import io.serverlessworkflow.impl.WorkflowModel;
 import io.serverlessworkflow.impl.WorkflowStatus;
@@ -30,37 +33,36 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
 class ForkWaitTest {
 
   private static WorkflowApplication appl;
 
   @BeforeAll
-  static void init() throws IOException {
+  static void init() {
     appl = WorkflowApplication.builder().build();
   }
 
   @AfterAll
-  static void tearDown() throws IOException {
+  static void tearDown() {
     appl.close();
   }
 
-  @Test
-  void testForkWait() throws IOException, InterruptedException, ExecutionException {
-    assertModel(
-        appl.workflowDefinition(readWorkflowFromClasspath("workflows-samples/fork-wait.yaml"))
-            .instance(Map.of())
-            .start()
-            .join());
+  @ParameterizedTest(name = "{0}")
+  @MethodSource("forkWaitWorkflowSources")
+  void testForkWait(String sourceName, Workflow workflow) {
+    assertModel(appl.workflowDefinition(workflow).instance(Map.of()).start().join());
   }
 
-  @Test
-  void testForkWaitWithSuspend() throws IOException, InterruptedException {
-    Workflow workflow = readWorkflowFromClasspath("workflows-samples/fork-wait.yaml");
+  @ParameterizedTest(name = "{0}")
+  @MethodSource("forkWaitWorkflowSources")
+  void testForkWaitWithSuspend(String sourceName, Workflow workflow) {
     WorkflowInstance instance = appl.workflowDefinition(workflow).instance(Map.of());
     CompletableFuture<WorkflowModel> future = instance.start();
     await()
@@ -73,6 +75,39 @@ class ForkWaitTest {
     WorkflowModel model = future.join();
     assertThat(instance.status()).isEqualTo(WorkflowStatus.COMPLETED);
     assertModel(model);
+  }
+
+  private static Stream<Arguments> forkWaitWorkflowSources() throws IOException {
+    return Stream.of(
+            readWorkflowFromClasspath("workflows-samples/fork-wait.yaml"), forkWaitWorkflow())
+        .map(workflow -> Arguments.of(WorkflowDefinitionId.of(workflow).toString(":"), workflow));
+  }
+
+  private static Workflow forkWaitWorkflow() {
+    return WorkflowBuilder.workflow("fork-wait-java-dsl", "test", "0.1.0")
+        .tasks(
+            DSL.fork(
+                "incrParallel",
+                forkTaskBuilder ->
+                    forkTaskBuilder
+                        .compete(false)
+                        .branch(
+                            "helloBranch",
+                            b ->
+                                b.wait(
+                                        "waitABit",
+                                        waitTaskBuilder ->
+                                            waitTaskBuilder.wait(Duration.ofMillis(90)))
+                                    .set("set", s -> s.put("value", 1)))
+                        .branch(
+                            "byeBranch",
+                            b ->
+                                b.wait(
+                                        "waitABit",
+                                        waitTaskBuilder ->
+                                            waitTaskBuilder.wait(Duration.ofMillis(90)))
+                                    .set("set", s -> s.put("value", 2)))))
+        .build();
   }
 
   private void assertModel(WorkflowModel current) {

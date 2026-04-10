@@ -23,7 +23,11 @@ import io.cloudevents.CloudEvent;
 import io.cloudevents.core.data.PojoCloudEventData;
 import io.serverlessworkflow.api.WorkflowReader;
 import io.serverlessworkflow.api.types.Workflow;
+import io.serverlessworkflow.fluent.spec.WorkflowBuilder;
+import io.serverlessworkflow.fluent.spec.dsl.DSL;
 import io.serverlessworkflow.impl.WorkflowApplication;
+import io.serverlessworkflow.impl.WorkflowDefinition;
+import io.serverlessworkflow.impl.WorkflowDefinitionId;
 import io.serverlessworkflow.impl.WorkflowInstance;
 import io.serverlessworkflow.impl.WorkflowModel;
 import io.serverlessworkflow.impl.WorkflowStatus;
@@ -51,10 +55,14 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
 class LifeCycleEventsTest {
 
@@ -113,13 +121,24 @@ class LifeCycleEventsTest {
     assertThat(taskStartedEvent.startedAt()).isBefore(taskCompletedEvent.completedAt());
   }
 
-  @Test
-  void testSuspendResumeNotWait()
-      throws IOException, ExecutionException, InterruptedException, TimeoutException {
-    WorkflowInstance instance =
-        appl.workflowDefinition(
-                WorkflowReader.readWorkflowFromClasspath("workflows-samples/wait-set.yaml"))
-            .instance(Map.of());
+  @ParameterizedTest(name = "{0}")
+  @MethodSource("waitSetWorkflowSources")
+  void testSuspendResumeNotWait(String sourceName, Workflow workflow)
+      throws ExecutionException, InterruptedException, TimeoutException {
+    doTestSuspendResumeNotWait(workflow);
+  }
+
+  private static Stream<Arguments> waitSetWorkflowSources() throws IOException {
+    return Stream.of(
+            WorkflowReader.readWorkflowFromClasspath("workflows-samples/wait-set.yaml"),
+            waitTestWorkflow())
+        .map(workflow -> Arguments.of(WorkflowDefinitionId.of(workflow).toString(":"), workflow));
+  }
+
+  private void doTestSuspendResumeNotWait(Workflow workflow)
+      throws InterruptedException, ExecutionException, TimeoutException {
+    WorkflowDefinition def = appl.workflowDefinition(workflow);
+    WorkflowInstance instance = def.instance(Map.of());
     CompletableFuture<WorkflowModel> future = instance.start();
     instance.suspend();
     assertThat(instance.status()).isEqualTo(WorkflowStatus.SUSPENDED);
@@ -136,13 +155,17 @@ class LifeCycleEventsTest {
         .isBeforeOrEqualTo(workflowResumedEvent.resumedAt());
   }
 
-  @Test
-  void testSuspendResumeWait()
-      throws IOException, ExecutionException, InterruptedException, TimeoutException {
-    WorkflowInstance instance =
-        appl.workflowDefinition(
-                WorkflowReader.readWorkflowFromClasspath("workflows-samples/wait-set.yaml"))
-            .instance(Map.of());
+  @ParameterizedTest(name = "{0}")
+  @MethodSource("waitSetWorkflowSources")
+  void testSuspendResumeWait(String sourceName, Workflow workflow)
+      throws ExecutionException, InterruptedException, TimeoutException {
+    doTestSuspendResumeWait(workflow);
+  }
+
+  private void doTestSuspendResumeWait(Workflow workflow)
+      throws InterruptedException, ExecutionException, TimeoutException {
+    WorkflowDefinition def = appl.workflowDefinition(workflow);
+    WorkflowInstance instance = def.instance(Map.of());
     CompletableFuture<WorkflowModel> future = instance.start();
     assertThat(instance.status()).isEqualTo(WorkflowStatus.WAITING);
     instance.suspend();
@@ -160,12 +183,15 @@ class LifeCycleEventsTest {
     assertThat(workflowSuspendedEvent.suspendedAt()).isBefore(workflowResumedEvent.resumedAt());
   }
 
-  @Test
-  void testCancel() throws IOException, InterruptedException {
-    WorkflowInstance instance =
-        appl.workflowDefinition(
-                WorkflowReader.readWorkflowFromClasspath("workflows-samples/wait-set.yaml"))
-            .instance(Map.of());
+  @ParameterizedTest(name = "{0}")
+  @MethodSource("waitSetWorkflowSources")
+  void testCancel(String sourceName, Workflow workflow) throws IOException {
+    doTestCancel(workflow);
+  }
+
+  private void doTestCancel(Workflow workflow) {
+    WorkflowDefinition def = appl.workflowDefinition(workflow);
+    WorkflowInstance instance = def.instance(Map.of());
     CompletableFuture<WorkflowModel> future = instance.start();
     instance.cancel();
     assertThat(catchThrowableOfType(ExecutionException.class, () -> future.get().asMap()))
@@ -175,13 +201,15 @@ class LifeCycleEventsTest {
     assertPojoInCE("io.serverlessworkflow.workflow.cancelled.v1", WorkflowCancelledCEData.class);
   }
 
-  @Test
-  void testSuspendResumeTimeout()
-      throws IOException, ExecutionException, InterruptedException, TimeoutException {
-    WorkflowInstance instance =
-        appl.workflowDefinition(
-                WorkflowReader.readWorkflowFromClasspath("workflows-samples/wait-set.yaml"))
-            .instance(Map.of());
+  @ParameterizedTest(name = "{0}")
+  @MethodSource("waitSetWorkflowSources")
+  void testSuspendResumeTimeout(String sourceName, Workflow workflow) {
+    doTestSuspendResumeTimeout(workflow);
+  }
+
+  private static void doTestSuspendResumeTimeout(Workflow workflow) {
+    WorkflowDefinition def = appl.workflowDefinition(workflow);
+    WorkflowInstance instance = def.instance(Map.of());
     CompletableFuture<WorkflowModel> future = instance.start();
     instance.suspend();
     assertThat(catchThrowableOfType(TimeoutException.class, () -> future.get(1, TimeUnit.SECONDS)))
@@ -219,5 +247,17 @@ class LifeCycleEventsTest {
     Object pojo = ((PojoCloudEventData<?>) Objects.requireNonNull(ce.getData())).getValue();
     assertThat(pojo).isInstanceOf(clazz);
     return clazz.cast(pojo);
+  }
+
+  private static Workflow waitTestWorkflow() {
+    return WorkflowBuilder.workflow("wait-test-java-dsl", "test", "0.1.0")
+        .tasks(
+            // wait 500 ms
+            DSL.wait(
+                "waitABit",
+                timeoutBuilder ->
+                    timeoutBuilder.duration(durationBuilder -> durationBuilder.milliseconds(500))),
+            DSL.set("useExpression", setTaskBuilder -> setTaskBuilder.put("name", "Javierito")))
+        .build();
   }
 }
