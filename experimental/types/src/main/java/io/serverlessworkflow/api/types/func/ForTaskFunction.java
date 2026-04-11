@@ -16,6 +16,8 @@
 package io.serverlessworkflow.api.types.func;
 
 import io.serverlessworkflow.api.types.ForTask;
+import java.io.IOException;
+import java.io.ObjectInputStream;
 import java.util.Collection;
 import java.util.Optional;
 import java.util.function.Function;
@@ -24,9 +26,9 @@ public class ForTaskFunction extends ForTask {
 
   private static final long serialVersionUID = 1L;
   private LoopPredicateIndexFilter<?, ?> whilePredicate;
-  private Optional<Class<?>> whileClass;
-  private Optional<Class<?>> itemClass;
-  private Optional<Class<?>> forClass;
+  private Optional<Class<?>> whileClass = Optional.empty();
+  private Optional<Class<?>> itemClass = Optional.empty();
+  private Optional<Class<?>> forClass = Optional.empty();
   private Function<?, Collection<?>> collection;
 
   public <T, V> ForTaskFunction withWhile(LoopPredicate<T, V> whilePredicate) {
@@ -146,5 +148,23 @@ public class ForTaskFunction extends ForTask {
 
   public Function<?, Collection<?>> getCollection() {
     return collection;
+  }
+
+  private void normalizeOptionalFields() {
+    if (whileClass == null) {
+      whileClass = Optional.empty();
+    }
+    if (itemClass == null) {
+      itemClass = Optional.empty();
+    }
+    if (forClass == null) {
+      forClass = Optional.empty();
+    }
+  }
+
+  private void readObject(ObjectInputStream input) throws IOException, ClassNotFoundException {
+    input.defaultReadObject();
+    // Preserve compatibility with older serialized instances that may have null optionals.
+    normalizeOptionalFields();
   }
 }
