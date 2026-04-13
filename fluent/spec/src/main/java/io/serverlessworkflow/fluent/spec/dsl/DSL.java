@@ -653,7 +653,22 @@ public final class DSL {
     return list -> list.openapi(configurer);
   }
 
-  public static TasksConfigurer workflow(WorkflowConfigurer configurer) {
+  /**
+   * Create a {@link TasksConfigurer} that adds a sub-workflow call task using a {@link
+   * WorkflowConfigurer}.
+   *
+   * <p>
+   *
+   * <pre>{@code
+   * tasks(
+   *  subflow(workflow("org.acme", "sub-workflow", "0.1.0").input(...)
+   * );
+   * }</pre>
+   *
+   * @param configurer
+   * @return
+   */
+  public static TasksConfigurer subflow(WorkflowConfigurer configurer) {
     return list -> list.workflow(configurer);
   }
 
