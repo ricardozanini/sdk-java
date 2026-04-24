@@ -13,17 +13,22 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.serverlessworkflow.fluent.spec;
+package io.serverlessworkflow.fluent.func;
 
-public class TryTaskBuilder<T extends BaseTaskItemListBuilder<T>>
-    extends BaseTryTaskBuilder<TryTaskBuilder<T>, T> {
+import io.serverlessworkflow.fluent.func.spi.ConditionalTaskBuilder;
+import io.serverlessworkflow.fluent.func.spi.FuncTaskTransformations;
+import io.serverlessworkflow.fluent.spec.BaseRaiseTaskBuilder;
 
-  TryTaskBuilder(T doTaskBuilderFactory) {
-    super(doTaskBuilderFactory);
+public class FuncRaiseTaskBuilder extends BaseRaiseTaskBuilder<FuncRaiseTaskBuilder>
+    implements FuncTaskTransformations<FuncRaiseTaskBuilder>,
+        ConditionalTaskBuilder<FuncRaiseTaskBuilder> {
+
+  FuncRaiseTaskBuilder() {
+    super();
   }
 
   @Override
-  protected TryTaskBuilder<T> self() {
+  protected FuncRaiseTaskBuilder self() {
     return this;
   }
 }
