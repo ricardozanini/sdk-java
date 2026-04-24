@@ -39,6 +39,7 @@ public abstract class BytesMapInstanceTransaction
 
   private static final byte VERSION_0 = 0;
   private static final byte VERSION_1 = 1;
+  private static final byte VERSION_2 = 2;
 
   private final WorkflowBufferFactory factory;
 
@@ -50,7 +51,7 @@ public abstract class BytesMapInstanceTransaction
   protected byte[] marshallTaskCompleted(WorkflowContextData contextData, TaskContext taskContext) {
     ByteArrayOutputStream bytes = new ByteArrayOutputStream();
     try (WorkflowOutputBuffer writer = factory.output(bytes)) {
-      writer.writeByte(VERSION_1);
+      writer.writeByte(VERSION_2);
       writer.writeEnum(TaskStatus.COMPLETED);
       writer.writeInstant(taskContext.completedAt());
       writeModel(writer, taskContext.output());
@@ -64,6 +65,7 @@ public abstract class BytesMapInstanceTransaction
         writer.writeBoolean(true);
         writer.writeString(next.position().jsonPointer());
       }
+      writer.writeInt(taskContext.iteration());
     }
     return bytes.toByteArray();
   }
@@ -119,23 +121,42 @@ public abstract class BytesMapInstanceTransaction
       byte version = buffer.readByte();
       switch (version) {
         case VERSION_0:
-        default:
           return readVersion0(buffer);
         case VERSION_1:
           return readVersion1(buffer);
+        case VERSION_2:
+          return readVersion2(buffer);
       }
+      throw new UnsupportedOperationException("Unknown version " + version);
     }
+  }
+
+  private PersistenceTaskInfo readVersion2(WorkflowInputBuffer buffer) {
+    TaskStatus taskStatus = buffer.readEnum(TaskStatus.class);
+    switch (taskStatus) {
+      case COMPLETED:
+        return new CompletedTaskInfo(
+            buffer.readInstant(),
+            (WorkflowModel) buffer.readObject(),
+            (WorkflowModel) buffer.readObject(),
+            buffer.readBoolean(),
+            buffer.readBoolean() ? buffer.readString() : null,
+            buffer.readInt());
+      case RETRIED:
+        return new RetriedTaskInfo(buffer.readShort());
+    }
+    throw new UnsupportedOperationException("Unknown status " + taskStatus);
   }
 
   private PersistenceTaskInfo readVersion1(WorkflowInputBuffer buffer) {
     TaskStatus taskStatus = buffer.readEnum(TaskStatus.class);
     switch (taskStatus) {
       case COMPLETED:
-      default:
         return readVersion0(buffer);
       case RETRIED:
         return new RetriedTaskInfo(buffer.readShort());
     }
+    throw new UnsupportedOperationException("Unknown status " + taskStatus);
   }
 
   private PersistenceTaskInfo readVersion0(WorkflowInputBuffer buffer) {

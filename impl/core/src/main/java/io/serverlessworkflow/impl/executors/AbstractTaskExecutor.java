@@ -15,9 +15,9 @@
  */
 package io.serverlessworkflow.impl.executors;
 
+import static io.serverlessworkflow.impl.LifecycleEventsUtils.publishEvent;
 import static io.serverlessworkflow.impl.WorkflowUtils.buildWorkflowFilter;
 import static io.serverlessworkflow.impl.WorkflowUtils.getSchemaValidator;
-import static io.serverlessworkflow.impl.lifecycle.LifecycleEventsUtils.publishEvent;
 
 import io.serverlessworkflow.api.types.Export;
 import io.serverlessworkflow.api.types.FlowDirective;
@@ -210,6 +210,7 @@ public abstract class AbstractTaskExecutor<T extends TaskBase> implements TaskEx
     } else if (taskContext.isCompleted()) {
       return executeNext(completable, workflowContext);
     } else if (ifFilter.map(f -> f.test(workflowContext, taskContext, input)).orElse(true)) {
+      taskContext.iteration(workflowContext.instance().incIteration(position));
       completable =
           completable
               .thenCompose(workflowContext.instance()::suspendedCheck)

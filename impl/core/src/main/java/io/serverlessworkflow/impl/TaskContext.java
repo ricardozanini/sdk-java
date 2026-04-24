@@ -38,6 +38,7 @@ public class TaskContext implements TaskContextData {
   private Instant completedAt;
   private TransitionInfo transition;
   private short retryAttempt;
+  private int iteration;
   private AuthorizationDescriptor authorization;
 
   public TaskContext(
@@ -71,11 +72,6 @@ public class TaskContext implements TaskContextData {
     this.retryAttempt = parentContext.map(TaskContext::retryAttempt).orElse((short) 0);
     this.contextVariables =
         parentContext.map(p -> new HashMap<>(p.contextVariables)).orElseGet(HashMap::new);
-  }
-
-  public TaskContext copy() {
-    return new TaskContext(
-        rawInput, parentContext, taskName, task, position, startedAt, input, output, rawOutput);
   }
 
   public void input(WorkflowModel input) {
@@ -174,6 +170,7 @@ public class TaskContext implements TaskContextData {
     return completedAt != null;
   }
 
+  @Override
   public short retryAttempt() {
     return retryAttempt;
   }
@@ -184,6 +181,15 @@ public class TaskContext implements TaskContextData {
 
   public boolean isRetrying() {
     return retryAttempt > 0;
+  }
+
+  @Override
+  public int iteration() {
+    return iteration;
+  }
+
+  public void iteration(int iteration) {
+    this.iteration = iteration;
   }
 
   @Override
