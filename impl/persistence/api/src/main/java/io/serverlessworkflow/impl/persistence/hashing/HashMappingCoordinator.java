@@ -22,24 +22,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 public class HashMappingCoordinator {
 
-  public static final HashMappingCoordinator build(
-      HashFactory hashFactory,
-      Function<String, Map<String, Map<HashIndex, byte[]>>> retriever,
-      Consumer<Map<String, List<HashMappingInfo>>> writer) {
-    return new HashMappingCoordinator(hashFactory, retriever, writer);
-  }
-
-  private static Map<String, Map<String, Map<HashIndex, BytesWithFlag>>> mappingInfo =
-      new ConcurrentHashMap<>();
-
-  private static class BytesWithFlag {
+  static class BytesWithFlag {
     private final byte[] bytes;
     private boolean persisted;
 
@@ -64,16 +54,22 @@ public class HashMappingCoordinator {
 
   private record PendingWrite(String key, HashIndex index, BytesWithFlag bytes) {}
 
-  private final HashFactory hashFactory;
+  private Map<String, Map<String, Map<HashIndex, BytesWithFlag>>> instanceMaps = new HashMap<>();
+
+  private final Supplier<HashIndex> hashIndexSupplier;
+  private final LRUCache<String, Map<String, Map<HashIndex, BytesWithFlag>>> mappingInfo;
+
   private final Function<String, Map<String, Map<HashIndex, byte[]>>> retriever;
   private final Consumer<Map<String, List<HashMappingInfo>>> writer;
 
-  private HashMappingCoordinator(
-      HashFactory hashFactory,
+  protected HashMappingCoordinator(
+      LRUCache<String, Map<String, Map<HashIndex, BytesWithFlag>>> mappingInfo,
+      Supplier<HashIndex> hashIndexSupplier,
       Function<String, Map<String, Map<HashIndex, byte[]>>> retriever,
       Consumer<Map<String, List<HashMappingInfo>>> writer) {
-    this.hashFactory = hashFactory;
     this.retriever = retriever;
+    this.mappingInfo = mappingInfo;
+    this.hashIndexSupplier = hashIndexSupplier;
     this.writer = writer;
   }
 
@@ -84,7 +80,7 @@ public class HashMappingCoordinator {
   }
 
   public HashIndex calculateIndex(String instanceId, HashItem item, byte[] bytes) {
-    Map<String, Map<HashIndex, BytesWithFlag>> instanceMap = getInstanceMap(instanceId);
+    Map<String, Map<HashIndex, BytesWithFlag>> instanceMap = getCachedInstanceMap(instanceId);
     String key = item.key();
     synchronized (instanceMap) {
       Map<HashIndex, BytesWithFlag> duplicateMap =
@@ -98,7 +94,7 @@ public class HashMappingCoordinator {
           return entry.getKey();
         }
       }
-      HashIndex index = hashFactory.newIndex();
+      HashIndex index = hashIndexSupplier.get();
       BytesWithFlag bytesWithFlag = new BytesWithFlag(bytes);
       duplicateMap.put(index, bytesWithFlag);
       addWrite(instanceId, key, index, bytesWithFlag);
@@ -114,11 +110,19 @@ public class HashMappingCoordinator {
 
   public Optional<byte[]> readBytes(String instanceId, HashItem item, HashIndex index) {
     Map<String, Map<HashIndex, BytesWithFlag>> instanceMap = getInstanceMap(instanceId);
-    synchronized (instanceMap) {
-      return Optional.ofNullable(instanceMap.get(item.key()))
-          .map(m -> m.get(index))
-          .map(bytes -> bytes.bytes);
+    try {
+      synchronized (instanceMap) {
+        return Optional.ofNullable(instanceMap.get(item.key()))
+            .map(m -> m.get(index))
+            .map(bytes -> bytes.bytes);
+      }
+    } finally {
+      mappingInfo.unpin(instanceId);
     }
+  }
+
+  private Map<String, Map<HashIndex, BytesWithFlag>> getCachedInstanceMap(String instanceId) {
+    return instanceMaps.computeIfAbsent(instanceId, k -> getInstanceMap(instanceId));
   }
 
   private Map<String, Map<HashIndex, BytesWithFlag>> getInstanceMap(String instanceId) {
@@ -169,18 +173,22 @@ public class HashMappingCoordinator {
         }
       }
     }
-    pending.clear();
+    cleanUp();
   }
 
   public void afterRollback() {
+    cleanUp();
+  }
+
+  private void cleanUp() {
+    instanceMaps.keySet().forEach(mappingInfo::unpin);
+    instanceMaps.clear();
     pending.clear();
   }
 
   public void afterRemove(String instanceId) {
+    pending.remove(instanceId);
+    instanceMaps.remove(instanceId);
     mappingInfo.remove(instanceId);
-  }
-
-  public static void clearAll() {
-    mappingInfo.clear();
   }
 }
